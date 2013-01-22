@@ -74,7 +74,6 @@ static void signal_handler(int sig)
 	}
 }
 
-
 #ifdef COMBINED_BINARY	
 int udhcpd_main(int argc, char *argv[])
 #else
@@ -87,7 +86,7 @@ int main(int argc, char *argv[])
 	int bytes, retval;
 	struct dhcpMessage packet;
 	unsigned char *state;
-	unsigned char *server_id, *requested;
+	unsigned char *server_id, *requested, *hostname;
 	u_int32_t server_id_align, requested_align;
 	unsigned long timeout_end;
 	struct option_set *option;
@@ -104,6 +103,9 @@ int main(int argc, char *argv[])
 	if (argc < 2)
 		read_config(DHCPD_CONF_FILE);
 	else read_config(argv[1]);
+    
+    /*get reserved ip from configuration file*/   
+    num_of_reservedIP = getReservedAddr(resrvMacAddr, resrvIpAddr);    
 
 	pid_fd = pidfile_acquire(server_config.pidfile);
 	pidfile_write_release(pid_fd);
@@ -196,7 +198,7 @@ int main(int argc, char *argv[])
 			DEBUG(LOG_ERR, "couldn't get option from packet, ignoring");
 			continue;
 		}
-		
+        
 		/* ADDME: look for a static lease */
 		lease = find_lease_by_chaddr(packet.chaddr);
 		switch (state[0]) {
@@ -208,14 +210,41 @@ int main(int argc, char *argv[])
 			}
 			break;			
  		case DHCPREQUEST:
+        {
+ 		    unsigned char mac[6];
+ 		    u_int32_t r_addr;
+ 		    memcpy(mac, packet.chaddr, 6);
+ 		    
 			DEBUG(LOG_INFO, "received REQUEST");
 
 			requested = get_option(&packet, DHCP_REQUESTED_IP);
 			server_id = get_option(&packet, DHCP_SERVER_ID);
+			hostname = get_option(&packet, DHCP_HOST_NAME);
 
 			if (requested) memcpy(&requested_align, requested, 4);
+			/*  added start pling 08/03/2011 */
+			/* Should clear this var, otherwise it keeps old value
+			 * (from previous packet) and cause reserved IP client
+			 * to get NAK.
+			 */
+			else
+				requested_align = 0;
+			/*  added end pling 08/03/2011 */
 			if (server_id) memcpy(&server_id_align, server_id, 4);
-		
+
+            r_addr = find_reserved_ip(mac);
+            if (r_addr) {
+                if (requested_align)
+                {
+                    if ( requested_align!=htonl(r_addr))
+                    {
+                        sendNAK(&packet);
+                        DEBUG(LOG_INFO, "prepare to send a reserved ip (0x%x, 0x%x)\n", requested_align, htonl(r_addr));
+                        break;
+                    }
+                }
+            }
+
 			if (lease) { /*ADDME: or static lease */
 				if (server_id) {
 					/* SELECTING State */
@@ -240,6 +269,19 @@ int main(int argc, char *argv[])
 						}
 					}						
 				}
+				if (hostname) {
+					bytes = hostname[-1];
+					if (bytes >= (int) sizeof(lease->hostname))
+						bytes = sizeof(lease->hostname) - 1;
+					strncpy(lease->hostname, hostname, bytes);
+					lease->hostname[bytes] = '\0';
+                    DEBUG(LOG_INFO,"rewrite leass table, hostname: %s\n", lease->hostname);
+                    /*  wklin removed, 05/07/2007 */
+                    /* write_leases(); */ /*Rewrite lease table into file.*/
+				} else
+					lease->hostname[0] = '\0';
+                /*  wklin added, 05/07/2007 */
+                write_leases(); /*Rewrite lease table into file.*/
 			
 			/* what to do if we have no record of the client */
 			} else if (server_id) {
@@ -251,27 +293,37 @@ int main(int argc, char *argv[])
 					if (lease_expired(lease)) {
 						/* probably best if we drop this lease */
 						memset(lease->chaddr, 0, 16);
+                        write_leases(); /*Rewrite lease table into file.*/
 					/* make some contention for this address */
 					} else sendNAK(&packet);
 				} else if (requested_align < server_config.start || 
 					   requested_align > server_config.end) {
 					sendNAK(&packet);
-				} /* else remain silent */
+				} else {
+					sendNAK(&packet);
+				}
 
-			} else {
-				 /* RENEWING or REBINDING State */
+			} else if (packet.ciaddr) {
+				/* RENEWING or REBINDING State */
+				sendNAK(&packet);
 			}
 			break;
+		}
 		case DHCPDECLINE:
 			DEBUG(LOG_INFO,"received DECLINE");
 			if (lease) {
 				memset(lease->chaddr, 0, 16);
 				lease->expires = time(0) + server_config.decline_time;
+                write_leases(); /*Rewrite lease table into file.*/
 			}			
 			break;
 		case DHCPRELEASE:
 			DEBUG(LOG_INFO,"received RELEASE");
-			if (lease) lease->expires = time(0);
+			if (lease) 
+            {    
+                lease->expires = time(0);
+                write_leases(); /*Rewrite lease table into file.*/
+            }
 			break;
 		case DHCPINFORM:
 			DEBUG(LOG_INFO,"received INFORM");

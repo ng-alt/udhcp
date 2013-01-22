@@ -34,8 +34,9 @@ struct dhcp_option options[] = {
 	{"ipttl",	OPTION_U8,				0x17},
 	{"mtu",		OPTION_U16,				0x1a},
 	{"broadcast",	OPTION_IP | OPTION_REQ,			0x1c},
+	{"sroute",	OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x21}, /* static-routes */
 	{"ntpsrv",	OPTION_IP | OPTION_LIST,		0x2a},
-	{"wins",	OPTION_IP | OPTION_LIST,		0x2c},
+	{"wins",	OPTION_IP | OPTION_LIST | OPTION_REQ,	0x2c},
 	{"requestip",	OPTION_IP,				0x32},
 	{"lease",	OPTION_U32,				0x33},
 	{"dhcptype",	OPTION_U8,				0x35},
@@ -43,6 +44,8 @@ struct dhcp_option options[] = {
 	{"message",	OPTION_STRING,				0x38},
 	{"tftp",	OPTION_STRING,				0x42},
 	{"bootfile",	OPTION_STRING,				0x43},
+	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x79}, /* classless-static-routes */
+	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0xf9},
 	{"",		0x00,				0x00}
 };
 
@@ -69,7 +72,11 @@ unsigned char *get_option(struct dhcpMessage *packet, int code)
 	
 	optionptr = packet->options;
 	i = 0;
-	length = 308;
+	//length = 308;
+	if (packet->op == BOOTREQUEST)
+		length = LEN_OPTIONS;
+	else
+		length = LEN_OPTIONS + LEN_PADDING;
 	while (!done) {
 		if (i >= length) {
 			LOG(LOG_WARNING, "bogus packet, option fields too long.");

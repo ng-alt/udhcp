@@ -4,6 +4,11 @@
 #include <netinet/udp.h>
 #include <netinet/ip.h>
 
+/*  added start, zacker, 09/18/2009, @big_size_pkt */
+#define LEN_OPTIONS 308 /* 312 - sizeof(cookie) */
+#define LEN_PADDING 924 /* 1500 - sizeof(udp_dhcp_packet) */
+/*  added end, zacker, 09/18/2009, @big_size_pkt */
+
 struct dhcpMessage {
 	u_int8_t op;
 	u_int8_t htype;
@@ -20,7 +25,8 @@ struct dhcpMessage {
 	u_int8_t sname[64];
 	u_int8_t file[128];
 	u_int32_t cookie;
-	u_int8_t options[308]; /* 312 - cookie */ 
+	//u_int8_t options[308]; /* 312 - cookie */ 
+	u_int8_t options[LEN_OPTIONS];/*  modified, zacker, 09/18/2009, @big_size_pkt */
 };
 
 struct udp_dhcp_packet {
@@ -29,6 +35,16 @@ struct udp_dhcp_packet {
 	struct dhcpMessage data;
 };
 
+/*  wklin added start, 10/03/2007 */
+/* for dhcp servers sending packet > 576 */
+struct udp_dhcp_packet_rcv {
+	struct iphdr ip;
+	struct udphdr udp;
+	struct dhcpMessage data;
+	//u_int8_t pad[6];
+	u_int8_t pad[LEN_PADDING];/*  modified, zacker, 09/18/2009, @big_size_pkt */
+};
+/*  wklin added end, 10/03/2007 */
 void init_header(struct dhcpMessage *packet, char type);
 int get_packet(struct dhcpMessage *packet, int fd);
 u_int16_t checksum(void *addr, int count);

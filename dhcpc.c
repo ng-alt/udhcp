@@ -35,6 +35,7 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <errno.h>
+#include <sys/sysinfo.h>
 
 #include "dhcpd.h"
 #include "dhcpc.h"
@@ -49,7 +50,7 @@
 static int state;
 static unsigned long requested_ip; /* = 0 */
 static unsigned long server_addr;
-static unsigned long timeout;
+static unsigned long timeout = 0;;
 static int packet_num; /* = 0 */
 static int fd;
 static int signal_pipe[2];
@@ -57,7 +58,10 @@ static int signal_pipe[2];
 #define LISTEN_NONE 0
 #define LISTEN_KERNEL 1
 #define LISTEN_RAW 2
-static int listen_mode;
+//static int listen_mode;
+static int listen_mode = LISTEN_NONE;
+
+static int run_on_lan = 0;
 
 #define DEFAULT_SCRIPT	"/usr/share/udhcpc/default.script"
 
@@ -75,6 +79,49 @@ struct client_config_t client_config = {
 	ifindex: 0,
 	arp: "\0\0\0\0\0\0",		/* appease gcc-3.0 */
 };
+
+#define MAJOR_NUM 100
+#define AG_MAX_ARG_CNT	    32
+#define DEVICE_FILE_NAME "acos_nat_cli"
+#define DEV_FILE_NAME_W_PATH    "/dev/"DEVICE_FILE_NAME
+#define IOCTL_AG_FW_LISTEN_PORT_SET         _IOR(MAJOR_NUM, 61, char *)
+#define DEV_LISTEN_PORT_DHCPC   5       /* DHCP listen port: 68 */
+
+typedef struct agIoctlParamPackage
+{  
+    int        paramCnt; 
+    int       paramLen[AG_MAX_ARG_CNT];  
+    void*   param[AG_MAX_ARG_CNT];
+    
+} T_agIoctlParamPkg;
+
+static int agApi_setDeviceListenPort(int port_idx, int port_num, int enable)
+{
+   	int ret_val=0, file_desc;
+	T_agIoctlParamPkg paramPkg;
+
+    file_desc = open(DEV_FILE_NAME_W_PATH, O_RDWR);
+	if (file_desc < 0) 
+	{
+        return 0;
+	}
+    
+    memset(&paramPkg, 0, sizeof(paramPkg));
+    paramPkg.paramCnt = 3;
+    paramPkg.param[0] = (void *)port_idx;
+    paramPkg.param[1] = (void *)port_num;
+    paramPkg.param[2] = (void *)enable;
+    
+	ret_val = ioctl(file_desc, IOCTL_AG_FW_LISTEN_PORT_SET, &paramPkg);
+
+    close(file_desc);
+    
+    if (paramPkg.paramCnt <= -1)
+        return paramPkg.paramCnt;
+    
+    return ret_val; 
+}
+
 
 #ifndef BB_VER
 static void show_usage(void)
@@ -109,6 +156,16 @@ static void change_mode(int new_mode)
 		new_mode ? (new_mode == 1 ? "kernel" : "raw") : "none");
 	close(fd);
 	fd = -1;
+	if (new_mode == LISTEN_NONE)
+	{
+	    if (listen_mode != LISTEN_NONE)
+	        agApi_setDeviceListenPort(DEV_LISTEN_PORT_DHCPC, 68, 0);
+	}
+	else
+	{
+	    if (listen_mode == LISTEN_NONE)
+	        agApi_setDeviceListenPort(DEV_LISTEN_PORT_DHCPC, 68, 1);
+	}
 	listen_mode = new_mode;
 }
 
@@ -132,6 +189,7 @@ static void perform_renew(void)
 		state = INIT_SELECTING;
 		break;
 	case INIT_SELECTING:
+		break;
 	}
 
 	/* start things over */
@@ -169,6 +227,8 @@ static void perform_release(void)
 /* Exit and cleanup */
 static void exit_client(int retval)
 {
+	if (listen_mode != LISTEN_NONE)
+		change_mode(LISTEN_NONE);
 	pidfile_delete(client_config.pidfile);
 	CLOSE_LOG();
 	exit(retval);
@@ -178,7 +238,7 @@ static void exit_client(int retval)
 /* Signal handler */
 static void signal_handler(int sig)
 {
-	if (send(signal_pipe[1], &sig, sizeof(sig), MSG_DONTWAIT) < 0) {
+	if (write(signal_pipe[1], &sig, sizeof(sig)) < 0) {
 		LOG(LOG_ERR, "Could not send signal: %s",
 			strerror(errno));
 	}
@@ -213,12 +273,20 @@ int main(int argc, char *argv[])
 	int retval;
 	struct timeval tv;
 	int c, len;
-	struct dhcpMessage packet;
+	/* 06/11/2010 fix memory overwrite issue */
+	/* struct dhcpMessage packet; */
+	struct udp_dhcp_packet_rcv packet;
 	struct in_addr temp_addr;
 	int pid_fd;
 	time_t now;
 	int max_fd;
 	int sig;
+    unsigned long curr_time;
+    struct sysinfo info;
+
+#define DHCPC_TIMEOUT_RESTART_INTERVAL		300
+	int packet_timeout = 1;
+	int accumulated_timeout = 0;
 
 	static struct option arg_options[] = {
 		{"clientid",	required_argument,	0, 'c'},
@@ -240,7 +308,12 @@ int main(int argc, char *argv[])
 	/* get options */
 	while (1) {
 		int option_index = 0;
+		/* Add option '-l' to tell this runs on LAN (LAN auto ip) */
+#if 0
 		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:v", arg_options, &option_index);
+#endif
+		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:vl", 
+				arg_options, &option_index);
 		if (c == -1) break;
 		
 		switch (c) {
@@ -290,6 +363,11 @@ int main(int argc, char *argv[])
 			printf("udhcpcd, version %s\n\n", VERSION);
 			exit_client(0);
 			break;
+		/* LAN Auto IP changes */
+		case 'l':
+			run_on_lan = 1;
+			LOG(LOG_INFO, "run on LAN!\n");
+			break;
 		default:
 			show_usage();
 		}
@@ -313,8 +391,16 @@ int main(int argc, char *argv[])
 		memcpy(client_config.clientid + 3, client_config.arp, 6);
 	}
 
+	/* ensure that stdin/stdout/stderr are never returned by pipe() */
+	if (fcntl(STDIN_FILENO, F_GETFL) == -1)
+		(void) open("/dev/null", O_RDONLY);
+	if (fcntl(STDOUT_FILENO, F_GETFL) == -1)
+		(void) open("/dev/null", O_WRONLY);
+	if (fcntl(STDERR_FILENO, F_GETFL) == -1)
+		(void) open("/dev/null", O_WRONLY);	
+
 	/* setup signal handlers */
-	socketpair(AF_UNIX, SOCK_STREAM, 0, signal_pipe);
+	pipe(signal_pipe);
 	signal(SIGUSR1, signal_handler);
 	signal(SIGUSR2, signal_handler);
 	signal(SIGTERM, signal_handler);
@@ -325,7 +411,13 @@ int main(int argc, char *argv[])
 
 	for (;;) {
 
-		tv.tv_sec = timeout - time(0);
+        sysinfo(&info);
+        curr_time = (unsigned long)(info.uptime);
+        
+        if (timeout > curr_time)
+    		tv.tv_sec = timeout - curr_time;
+        else
+    		tv.tv_sec = 0;
 		tv.tv_usec = 0;
 		FD_ZERO(&rfds);
 
@@ -348,7 +440,8 @@ int main(int argc, char *argv[])
 			retval = select(max_fd + 1, &rfds, NULL, NULL, &tv);
 		} else retval = 0; /* If we already timed out, fall through */
 
-		now = time(0);
+        sysinfo(&info);
+		now = (unsigned long)(info.uptime);
 		if (retval == 0) {
 			/* timeout dropped to zero */
 			switch (state) {
@@ -359,8 +452,23 @@ int main(int argc, char *argv[])
 
 					/* send discover packet */
 					send_discover(xid, requested_ip); /* broadcast */
-					
+
+#ifdef NEW_WANDETECT
+					if (!run_on_lan) {
+						if (packet_num == 0) {
+							packet_timeout = 1;
+							accumulated_timeout = 0;
+						} else
+							packet_timeout <<= 1;
+						timeout = now + packet_timeout;
+						accumulated_timeout += packet_timeout;
+					} else {
+						timeout = now + ((packet_num == 2) ? 4 : 3);
+					}
+#else
 					timeout = now + ((packet_num == 2) ? 4 : 2);
+#endif
+
 					packet_num++;
 				} else {
 					if (client_config.background_if_no_lease) {
@@ -371,8 +479,29 @@ int main(int argc, char *argv[])
 						exit_client(1);
 				  	}
 					/* wait to try again */
-					packet_num = 0;
-					timeout = now + 60;
+					if (!run_on_lan) {
+						send_discover(xid, requested_ip); /* broadcast */
+
+						packet_timeout <<= 1;
+						if (accumulated_timeout + packet_timeout >= DHCPC_TIMEOUT_RESTART_INTERVAL) {
+							packet_timeout = DHCPC_TIMEOUT_RESTART_INTERVAL - accumulated_timeout;
+							packet_num = 0;
+						} 
+						timeout = now + packet_timeout;
+						accumulated_timeout += packet_timeout;
+					} else {
+						packet_num = 0;
+						timeout = now + 60;
+					}
+					/* No lease found yet, signal 'autoipd'
+					 * to start Auto IP process */
+					if (run_on_lan) {
+						system("killall -SIGUSR1 autoipd 2>/dev/null");
+						/* Per Netgear Router Spec 2.0, need to resend
+						 * DHCP Discover every 4 minutes.
+						 */
+						timeout = now + 240;
+					}
 				}
 				break;
 			case RENEW_REQUESTED:
@@ -442,8 +571,10 @@ int main(int argc, char *argv[])
 			/* a packet is ready, read it */
 			
 			if (listen_mode == LISTEN_KERNEL)
-				len = get_packet(&packet, fd);
-			else len = get_raw_packet(&packet, fd);
+				/* len = get_packet(&packet, fd); */
+				len = get_packet(&packet.data, fd);
+			/* else len = get_raw_packet(&packet, fd); */
+			else len = get_raw_packet(&packet.data, fd);
 			
 			if (len == -1 && errno != EINTR) {
 				DEBUG(LOG_INFO, "error on read, %s, reopening socket", strerror(errno));
@@ -451,13 +582,16 @@ int main(int argc, char *argv[])
 			}
 			if (len < 0) continue;
 			
-			if (packet.xid != xid) {
+			/* if (packet.xid != xid) { */
+			if (packet.data.xid != xid) {
 				DEBUG(LOG_INFO, "Ignoring XID %lx (our xid is %lx)",
-					(unsigned long) packet.xid, xid);
+					/* (unsigned long) packet.xid, xid); */
+					(unsigned long) packet.data.xid, xid);
 				continue;
 			}
 			
-			if ((message = get_option(&packet, DHCP_MESSAGE_TYPE)) == NULL) {
+			/* if ((message = get_option(&packet, DHCP_MESSAGE_TYPE)) == NULL) { */
+			if ((message = get_option(&packet.data, DHCP_MESSAGE_TYPE)) == NULL) {
 				DEBUG(LOG_ERR, "couldnt get option from packet -- ignoring");
 				continue;
 			}
@@ -466,11 +600,13 @@ int main(int argc, char *argv[])
 			case INIT_SELECTING:
 				/* Must be a DHCPOFFER to one of our xid's */
 				if (*message == DHCPOFFER) {
-					if ((temp = get_option(&packet, DHCP_SERVER_ID))) {
+					/* if ((temp = get_option(&packet, DHCP_SERVER_ID))) { */
+					if ((temp = get_option(&packet.data, DHCP_SERVER_ID))) {
 						memcpy(&server_addr, temp, 4);
-						xid = packet.xid;
-						requested_ip = packet.yiaddr;
-						
+						/* xid = packet.xid;
+						requested_ip = packet.yiaddr; */
+						xid = packet.data.xid;
+						requested_ip = packet.data.yiaddr;
 						/* enter requesting state */
 						state = REQUESTING;
 						timeout = now;
@@ -485,7 +621,8 @@ int main(int argc, char *argv[])
 			case RENEWING:
 			case REBINDING:
 				if (*message == DHCPACK) {
-					if (!(temp = get_option(&packet, DHCP_LEASE_TIME))) {
+					/* if (!(temp = get_option(&packet, DHCP_LEASE_TIME))) { */
+					if (!(temp = get_option(&packet.data, DHCP_LEASE_TIME))) {
 						LOG(LOG_ERR, "No lease time with ACK, using 1 hour lease");
 						lease = 60 * 60;
 					} else {
@@ -493,18 +630,42 @@ int main(int argc, char *argv[])
 						lease = ntohl(lease);
 					}
 						
+					/* check before entering requesting state */
+					u_int32_t addr_to_arp;
+					if (state == REQUESTING)
+						addr_to_arp = 0;
+					else
+						addr_to_arp = requested_ip;
+					/* if (arpping(packet.yiaddr, 0, */
+					if (arpping(packet.data.yiaddr, addr_to_arp, 
+								client_config.arp, client_config.interface)==0) {
+						/* send_decline(packet.xid, server_addr, packet.yiaddr); *//* broadcast */
+						send_decline(packet.data.xid, server_addr, packet.data.yiaddr); /* broadcast */
+						/* return to init state */
+						state = INIT_SELECTING;
+						timeout = now;
+						requested_ip = 0;
+						packet_num = 0;
+						change_mode(LISTEN_RAW);
+						sleep(10); /* per the RFC, avoid excessive network traffic */
+						break;
+					}
 					/* enter bound state */
 					t1 = lease / 2;
 					
 					/* little fixed point for n * .875 */
 					t2 = (lease * 0x7) >> 3;
-					temp_addr.s_addr = packet.yiaddr;
+					/* temp_addr.s_addr = packet.yiaddr; */
+					temp_addr.s_addr = packet.data.yiaddr;
 					LOG(LOG_INFO, "Lease of %s obtained, lease time %ld", 
 						inet_ntoa(temp_addr), lease);
 					start = now;
 					timeout = t1 + start;
-					requested_ip = packet.yiaddr;
-					run_script(&packet,
+					/* requested_ip = packet.yiaddr; */
+					requested_ip = packet.data.yiaddr;
+					remove("/tmp/udhcpc.routes");
+					/* run_script(&packet, */
+					run_script(&packet.data,
 						   ((state == RENEWING || state == REBINDING) ? "renew" : "bound"));
 
 					state = BOUND;
@@ -517,7 +678,8 @@ int main(int argc, char *argv[])
 				} else if (*message == DHCPNAK) {
 					/* return to init state */
 					LOG(LOG_INFO, "Received DHCP NAK");
-					run_script(&packet, "nak");
+					/* run_script(&packet, "nak"); */
+					run_script(&packet.data, "nak");
 					if (state != REQUESTING)
 						run_script(NULL, "deconfig");
 					state = INIT_SELECTING;
@@ -531,7 +693,7 @@ int main(int argc, char *argv[])
 			/* case BOUND, RELEASED: - ignore all packets */
 			}	
 		} else if (retval > 0 && FD_ISSET(signal_pipe[0], &rfds)) {
-			if (read(signal_pipe[0], &sig, sizeof(signal)) < 0) {
+			if (read(signal_pipe[0], &sig, sizeof(sig)) < 0) {
 				DEBUG(LOG_ERR, "Could not read signal: %s", 
 					strerror(errno));
 				continue; /* probably just EINTR */

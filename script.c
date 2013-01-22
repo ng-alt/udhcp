@@ -62,7 +62,6 @@ static int sprintip(char *dest, char *pre, unsigned char *ip) {
 	return sprintf(dest, "%s%d.%d.%d.%d ", pre, ip[0], ip[1], ip[2], ip[3]);
 }
 
-
 /* Fill dest with the text of option 'option'. */
 static void fill_options(char *dest, unsigned char *option, struct dhcp_option *type_p)
 {
@@ -76,6 +75,45 @@ static void fill_options(char *dest, unsigned char *option, struct dhcp_option *
 	dest += sprintf(dest, "%s=", type_p->name);
 
 	type = type_p->flags & TYPE_MASK;
+	
+    /*  added start by EricHuang, 12/20/2007 */
+    if ( strcmp(type_p->name, "rfc3442") == 0 )
+    {
+        FILE *fp=0;
+        
+        /* added start, water, 03/08/10, @option249*/
+        /*fp = fopen("/tmp/udhcpc.routes", "w+");*/
+        fp = fopen("/tmp/udhcpc.routes", "a+");
+        /* added end, water, 03/08/10*/
+        if (fp)
+        {
+            fwrite(option, 1, len, fp);
+            fclose(fp);
+        }
+        
+        dest += sprintf(dest, "%d", len); /* only save the length here ... */
+        return;
+    }
+    /*  added end by EricHuang, 12/20/2007 */
+    
+    /*  added start by EricHuang, 03/12/2008 */
+    if ( strcmp(type_p->name, "sroute") == 0 )
+    {
+        FILE *fp=0;
+        
+        fp = fopen("/tmp/udhcpc.routes2", "w+");
+        if (fp)
+        {
+            fwrite(option, 1, len, fp);
+            fclose(fp);
+        }
+        
+        dest += sprintf(dest, "%d", len); /* only save the length here ... */
+        return;
+    }
+    /*  added end by EricHuang, 03/12/2008 */
+    
+
 	optlen = option_lengths[type];
 	for(;;) {
 		switch (type) {
@@ -113,7 +151,7 @@ static void fill_options(char *dest, unsigned char *option, struct dhcp_option *
 			memcpy(dest, option, len);
 			dest[len] = '\0';
 			return;	 /* Short circuit this case */
-		}
+		}	
 		option += optlen;
 		len -= optlen;
 		if (len <= 0) break;

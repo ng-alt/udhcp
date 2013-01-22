@@ -92,6 +92,10 @@
 #define OPT_LEN 1
 #define OPT_DATA 2
 
+#define MAX_TOKEN_SIZE    100
+#define MAX_RESERVED_IP    64   
+#define MAX_RESERVED_MAC   64   
+
 struct option_set {
 	unsigned char *data;
 	struct option_set *next;
@@ -122,10 +126,15 @@ struct server_config_t {
 	u_int32_t siaddr;		/* next server bootp option */
 	char *sname;			/* bootp server name */
 	char *boot_file;		/* bootp boot file option */
-};	
+};
 
 extern struct server_config_t server_config;
 extern struct dhcpOfferedAddr *leases;
-		
+extern char resrvMacAddr[MAX_RESERVED_MAC][MAX_TOKEN_SIZE];
+extern char resrvIpAddr[MAX_RESERVED_IP][MAX_TOKEN_SIZE];
+extern int num_of_reservedIP;
+extern int getReservedAddr(char reservedMacAddr[][MAX_TOKEN_SIZE], char reservedIpAddr[][MAX_TOKEN_SIZE]);
+extern int check_reserved_ip(u_int32_t req_ip, u_int8_t *chaddr);
+extern u_int32_t find_reserved_ip(u_int8_t *chaddr);
 
 #endif

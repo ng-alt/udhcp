@@ -101,6 +101,59 @@ struct dhcpOfferedAddr *find_lease_by_yiaddr(u_int32_t yiaddr)
 	return NULL;
 }
 
+/*find and assignable address and check if the client hw address is a reserved address.*/
+u_int32_t find_address2(int check_expired, unsigned char *chaddr)
+{
+	u_int32_t addr, ret;
+	struct dhcpOfferedAddr *lease = NULL;		
+
+    /* First check for reserved IP for this mac */
+    addr = find_reserved_ip(chaddr);
+    if (addr) {
+        ret = htonl(addr);
+
+        /* Make sure this IP is not used in network */
+        if (!check_ip(addr)) {
+            LOG(LOG_INFO, "find_address2: found reserved ip 0x%x.\n", ret);
+            ret = htonl(addr);
+            return ret;
+        }
+    }
+
+	addr = ntohl(server_config.start); /* addr is in host order here */
+    
+	for (;addr <= ntohl(server_config.end); addr++) {
+
+        LOG(LOG_INFO, "find_address2: assign ip 0x%x.\n", addr);
+            /* ie, 192.168.55.0 */
+        if (!(addr & 0xFF)) continue;
+        
+        /* ie, 192.168.55.255 */
+        if ((addr & 0xFF) == 0xFF) continue;
+            
+            /*to check if this is a reserved ip for this mac or this ip has been reserved for others*/
+            //if ( !check_reserved_ip(addr, chaddr) )  // modified, wenchia, 2007/09/10
+            if ( !check_reserved_ip(htonl(addr), chaddr) ) 
+            {
+                LOG(LOG_INFO, "find_address2: ip 0x%x has beed reserved.\n", addr);
+                continue;
+            }
+        
+        /* lease is not taken */
+        ret = htonl(addr);
+        if ((!(lease = find_lease_by_yiaddr(ret)) ||
+        
+                /* or it expired and we are checking for expired leases */
+                (check_expired  && lease_expired(lease))) &&
+        
+                /* and it isn't on the network */
+                    !check_ip(ret)) {
+            return ret;
+            break;
+        }
+	}
+	return 0;
+}
 
 /* find an assignable address, it check_expired is true, we check all the expired leases as well.
  * Maybe this should try expired leases by age... */
@@ -144,7 +197,8 @@ int check_ip(u_int32_t addr)
 		temp.s_addr = addr;
 	 	LOG(LOG_INFO, "%s belongs to someone, reserving it for %ld seconds", 
 	 		inet_ntoa(temp), server_config.conflict_time);
-		add_lease(blank_chaddr, addr, server_config.conflict_time);
+        /* Any need to reserve this IP ??? */
+		/* add_lease(blank_chaddr, addr, server_config.conflict_time); */
 		return 1;
 	} else return 0;
 }

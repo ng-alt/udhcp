@@ -2,12 +2,12 @@
  * files.c -- DHCP server file manipulation *
  * Rewrite by Russ Dill <Russ.Dill@asu.edu> July 2001
  */
- 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <string.h>
-#include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
 #include <netdb.h>
@@ -19,6 +19,10 @@
 #include "leases.h"
 
 /* on these functions, make sure you datatype matches */
+/*  modified start, wenchia, 06/25/2007 */
+/* fix alignment issue in DG834GUv5 */
+/* original code*/
+/*
 static int read_ip(char *line, void *arg)
 {
 	struct in_addr *addr = arg;
@@ -32,6 +36,23 @@ static int read_ip(char *line, void *arg)
 	}
 	return retval;
 }
+*/
+
+static int read_ip(char *line, void *arg)
+{
+	struct in_addr addr;
+	struct hostent *host;
+	int retval = 1;
+
+        if (!inet_aton(line, &addr)) {
+		if ((host = gethostbyname(line))) 
+			addr.s_addr = *((unsigned long *) host->h_addr_list[0]);
+		else retval = 0;
+	}
+        memcpy((char*)arg, (char*)&addr, sizeof(struct in_addr));
+	return retval;
+}
+/*  modified end, wenchia, 06/25/2007 */
 
 
 static int read_str(char *line, void *arg)
@@ -243,6 +264,7 @@ void write_leases(void)
 			fwrite(leases[i].chaddr, 16, 1, fp);
 			fwrite(&(leases[i].yiaddr), 4, 1, fp);
 			fwrite(&lease_time, 4, 1, fp);
+			fwrite(leases[i].hostname, 64, 1, fp);
 		}
 	}
 	fclose(fp);
@@ -258,7 +280,7 @@ void read_leases(char *file)
 {
 	FILE *fp;
 	unsigned int i = 0;
-	struct dhcpOfferedAddr lease;
+	struct dhcpOfferedAddr lease, *oldest;
 	
 	if (!(fp = fopen(file, "r"))) {
 		LOG(LOG_ERR, "Unable to open %s for reading", file);
@@ -270,10 +292,12 @@ void read_leases(char *file)
 		if (lease.yiaddr >= server_config.start && lease.yiaddr <= server_config.end) {
 			lease.expires = ntohl(lease.expires);
 			if (!server_config.remaining) lease.expires -= time(0);
-			if (!(add_lease(lease.chaddr, lease.yiaddr, lease.expires))) {
+			if (!(oldest = add_lease(lease.chaddr, lease.yiaddr, lease.expires))) {
 				LOG(LOG_WARNING, "Too many leases while loading %s\n", file);
 				break;
 			}				
+			strncpy(oldest->hostname, lease.hostname, sizeof(oldest->hostname) - 1);
+			oldest->hostname[sizeof(oldest->hostname) - 1] = '\0';
 			i++;
 		}
 	}

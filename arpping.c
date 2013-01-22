@@ -31,11 +31,10 @@
  *		-1 error 
  */  
 
-/* FIXME: match response against chaddr */
 int arpping(u_int32_t yiaddr, u_int32_t ip, unsigned char *mac, char *interface)
 {
 
-	int	timeout = 2;
+	int	timeout = 500;        /* in ms */ /* rtsai modified, 06/08/2006 */    /* @XBOX */
 	int 	optval = 1;
 	int	s;			/* socket */
 	int	rv = 1;			/* return value */
@@ -69,7 +68,10 @@ int arpping(u_int32_t yiaddr, u_int32_t ip, unsigned char *mac, char *interface)
 	arp.operation = htons(ARPOP_REQUEST);		/* ARP op code */
 	*((u_int *) arp.sInaddr) = ip;			/* source IP address */
 	memcpy(arp.sHaddr, mac, 6);			/* source hardware address */
-	*((u_int *) arp.tInaddr) = yiaddr;		/* target IP address */
+    /*  modified pling start 03/0/9/2006: avoid alignment problem */
+	/* *((u_int *) arp.tInaddr) = yiaddr;*/		/* target IP address */
+    memcpy(arp.tInaddr, (char *)&yiaddr, 4);
+    /*  modified pling end 03/0/9/2006 */
 	
 	memset(&addr, 0, sizeof(addr));
 	strcpy(addr.sa_data, interface);
@@ -77,12 +79,14 @@ int arpping(u_int32_t yiaddr, u_int32_t ip, unsigned char *mac, char *interface)
 		rv = 0;
 	
 	/* wait arp reply, and check it */
-	tm.tv_usec = 0;
 	time(&prevTime);
 	while (timeout > 0) {
 		FD_ZERO(&fdset);
 		FD_SET(s, &fdset);
-		tm.tv_sec = timeout;
+		/*  modified, rtsai, 06/12/2006 */   /* @XBOX */
+    	tm.tv_usec = timeout*1000;
+		tm.tv_sec = 0;
+		/*  modified end, rtsai, 06/12/2006 */
 		if (select(s + 1, &fdset, (fd_set *) NULL, (fd_set *) NULL, &tm) < 0) {
 			DEBUG(LOG_ERR, "Error on ARPING request: %s", strerror(errno));
 			if (errno != EINTR) rv = 0;
@@ -96,7 +100,8 @@ int arpping(u_int32_t yiaddr, u_int32_t ip, unsigned char *mac, char *interface)
 				break;
 			}
 		}
-		timeout -= time(NULL) - prevTime;
+		/* timeout -= (time(NULL) - prevTime) * 1000;*/  /*  modified, rtsai, 06/12/2006 */ /* @XBOX */
+        timeout = 0;
 		time(&prevTime);
 	}
 	close(s);

@@ -102,7 +102,7 @@ static void add_bootp_options(struct dhcpMessage *packet)
 	if (server_config.boot_file)
 		strncpy(packet->file, server_config.boot_file, sizeof(packet->file) - 1);
 }
-	
+
 
 /* send a DHCP OFFER to a DHCP DISCOVER */
 int sendOffer(struct dhcpMessage *oldpacket)
@@ -113,39 +113,59 @@ int sendOffer(struct dhcpMessage *oldpacket)
 	unsigned char *req, *lease_time;
 	struct option_set *curr;
 	struct in_addr addr;
+    unsigned char mac[6];
+	u_int32_t reserved_ip;
 
+    memcpy(mac, oldpacket->chaddr, 6);
+    
 	init_packet(&packet, oldpacket, DHCPOFFER);
 	
 	/* ADDME: if static, short circuit */
 	/* the client is in our lease/offered table */
-	if ((lease = find_lease_by_chaddr(oldpacket->chaddr))) {
+	if ((lease = find_lease_by_chaddr(oldpacket->chaddr)) &&
+        
+        /* Make sure the IP is not already used on network */
+        !check_ip(lease->yiaddr)) {
+
 		if (!lease_expired(lease)) 
 			lease_time_align = lease->expires - time(0);
 		packet.yiaddr = lease->yiaddr;
 		
+    /* Find a reserved ip for this MAC */
+	} else if ( (reserved_ip = find_reserved_ip(mac)) != 0) {
+		packet.yiaddr = htonl(reserved_ip);
+        
 	/* Or the client has a requested ip */
 	} else if ((req = get_option(oldpacket, DHCP_REQUESTED_IP)) &&
 
-		   /* Don't look here (ugly hackish thing to do) */
-		   memcpy(&req_align, req, 4) &&
+		/* Don't look here (ugly hackish thing to do) */
+		memcpy(&req_align, req, 4) &&
 
-		   /* and the ip is in the lease range */
-		   ntohl(req_align) >= ntohl(server_config.start) &&
-		   ntohl(req_align) <= ntohl(server_config.end) &&
+        /* check if the requested ip has been reserved */
+        check_reserved_ip(req_align, mac) &&
+           
+		/* and the ip is in the lease range */
+		ntohl(req_align) >= ntohl(server_config.start) &&
+		ntohl(req_align) <= ntohl(server_config.end) &&
+
+         /* Check that this request ip is not on network */
+         //!check_ip(ntohl(req_align)) &&
+	 /* the input parameter of check_ip() should be network order */
+	 !check_ip(req_align) && /*  modified by Max Ding, 07/07/2011 @TD #42 of WNR3500Lv2 */
+           
+		/* and its not already taken/offered */ /* ADDME: check that its not a static lease */
+		((!(lease = find_lease_by_yiaddr(req_align)) ||
 		   
-		   /* and its not already taken/offered */ /* ADDME: check that its not a static lease */
-		   ((!(lease = find_lease_by_yiaddr(req_align)) ||
-		   
-		   /* or its taken, but expired */ /* ADDME: or maybe in here */
-		   lease_expired(lease)))) {
-				packet.yiaddr = req_align; /* FIXME: oh my, is there a host using this IP? */
+		/* or its taken, but expired */ /* ADDME: or maybe in here */
+		lease_expired(lease)))) {
+		    packet.yiaddr = req_align; 
 
 	/* otherwise, find a free IP */ /*ADDME: is it a static lease? */
 	} else {
-		packet.yiaddr = find_address(0);
+		packet.yiaddr = find_address2(0, mac);
 		
 		/* try for an expired lease */
-		if (!packet.yiaddr) packet.yiaddr = find_address(1);
+		if (!packet.yiaddr) packet.yiaddr = find_address2(1, mac);
 	}
 	
 	if(!packet.yiaddr) {
@@ -202,6 +222,13 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
 	struct dhcpMessage packet;
 	struct option_set *curr;
 	unsigned char *lease_time;
+	
+	// added start Bob Guo 11/15/2006
+	FILE *fp;
+	unsigned char *client_mac, *client_ip;
+	char logBuffer[96];
+	// added end Bob Guo 11/15/2006
+	
 	u_int32_t lease_time_align = server_config.lease;
 	struct in_addr addr;
 
@@ -235,6 +262,18 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
 		return -1;
 
 	add_lease(packet.chaddr, packet.yiaddr, lease_time_align);
+	// added start Bob Guo 11/15/2006
+	client_mac = (unsigned char *)packet.chaddr;
+	client_ip = (unsigned char *)&packet.yiaddr;
+	sprintf(logBuffer, "[DHCP IP: (%d.%d.%d.%d)] to MAC address %02X:%02X:%02X:%02X:%02X:%02X,",
+	                                          *client_ip, *(client_ip+1), *(client_ip+2), *(client_ip+3),
+	                                          *client_mac, *(client_mac+1), *(client_mac+2), *(client_mac+3), *(client_mac+4), *(client_mac+5));
+	if ((fp = fopen("/dev/aglog", "r+")) != NULL)
+  {
+        fwrite(logBuffer, sizeof(char), strlen(logBuffer)+1, fp);
+        fclose(fp);
+  }	
+	// added end Bob Guo 11/15/2006
 
 	return 0;
 }
