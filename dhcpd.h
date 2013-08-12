@@ -93,8 +93,8 @@
 #define OPT_DATA 2
 
 #define MAX_TOKEN_SIZE    100
-#define MAX_RESERVED_IP    64   
-#define MAX_RESERVED_MAC   64   
+#define MAX_RESERVED_IP    64   /* Foxconn modified pling 10/04/2007, 30->64 */
+#define MAX_RESERVED_MAC   64   /* Foxconn modified pling 10/04/2007, 30->64 */
 
 struct option_set {
 	unsigned char *data;

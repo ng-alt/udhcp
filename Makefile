@@ -91,6 +91,7 @@ $(EXEC3): $(OBJS3)
 install: all
 
 	$(INSTALL) $(DAEMONS) $(USRSBINDIR)
+#foxconn removed, water, 05/15/2009, dumplease is not necessary
 #	$(INSTALL) $(COMMANDS) $(USRBINDIR)
 ifdef COMBINED_BINARY
 	cd $(USRSBINDIR) && ln -sf $(DAEMONS) $(BOOT_PROGRAMS)

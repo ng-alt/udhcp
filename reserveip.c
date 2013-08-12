@@ -1,7 +1,7 @@
 /* reserveip.c
  *
  * udhcp Server
- * Copyright (C) 2005 Eric Huang <eric.sy.huang@.com>
+ * Copyright (C) 2005 Eric Huang <eric.sy.huang@foxconn.com>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -134,7 +134,7 @@ int getReservedAddr(char reservedMacAddr[][MAX_TOKEN_SIZE], char reservedIpAddr[
 {
 #define BUFFER_SIZE     2*1024
     int numReservedMac=0, numReservedIp=0;
-    char buffer[BUFFER_SIZE];      /*  modified pling 10/04/2007, to allow max 64 reserved IP */
+    char buffer[BUFFER_SIZE];      /* Foxconn modified pling 10/04/2007, to allow max 64 reserved IP */
     FILE *in;
     
 	if (!(in = fopen("/tmp/udhcpd_resrv.conf", "r"))) 
@@ -182,21 +182,21 @@ int check_reserved_ip(u_int32_t req_ip, u_int8_t *chaddr)
     u_int32_t reserved_ip=0;
     int i=0;
 
-    /*  added start by EricHuang, 02/01/2007 */
-    //if ( ntohl(req_ip) == server_config.server ) // modified, wenchia, 2007/09/10
+    /* foxconn added start by EricHuang, 02/01/2007 */
+    //if ( ntohl(req_ip) == server_config.server ) //foxconn modified, wenchia, 2007/09/10
     if ( ntohl(req_ip) == ntohl(server_config.server) )
     {
         return 0; /* requested ip is router's ip */
     }
-    /*  added end by EricHuang, 02/01/2007 */
+    /* foxconn added end by EricHuang, 02/01/2007 */
 
     for (i=0; i<num_of_reservedIP; i++)
     {
         reserved_ip = inet_addr(resrvIpAddr[i]);
-        /* modify start,Zz Shan@Reserved ip 05/07/2008*/
+        /*Foxconn modify start,Zz Shan@Reserved ip 05/07/2008*/
         //if ( reserved_ip == ntohl(req_ip) )
         if ( reserved_ip == (req_ip) )
-        /* modify end,Zz Shan@Reserved ip 05/07/2008*/
+        /*Foxconn modify end,Zz Shan@Reserved ip 05/07/2008*/
         {
             unsigned char tempMac[32], mac[7];
             sprintf(tempMac, "%s", resrvMacAddr[i]);

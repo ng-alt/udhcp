@@ -76,15 +76,15 @@ static void fill_options(char *dest, unsigned char *option, struct dhcp_option *
 
 	type = type_p->flags & TYPE_MASK;
 	
-    /*  added start by EricHuang, 12/20/2007 */
+    /* foxconn added start by EricHuang, 12/20/2007 */
     if ( strcmp(type_p->name, "rfc3442") == 0 )
     {
         FILE *fp=0;
         
-        /* added start, water, 03/08/10, @option249*/
+        /*foxconn added start, water, 03/08/10, @option249*/
         /*fp = fopen("/tmp/udhcpc.routes", "w+");*/
         fp = fopen("/tmp/udhcpc.routes", "a+");
-        /* added end, water, 03/08/10*/
+        /*foxconn added end, water, 03/08/10*/
         if (fp)
         {
             fwrite(option, 1, len, fp);
@@ -94,9 +94,9 @@ static void fill_options(char *dest, unsigned char *option, struct dhcp_option *
         dest += sprintf(dest, "%d", len); /* only save the length here ... */
         return;
     }
-    /*  added end by EricHuang, 12/20/2007 */
+    /* foxconn added end by EricHuang, 12/20/2007 */
     
-    /*  added start by EricHuang, 03/12/2008 */
+    /* foxconn added start by EricHuang, 03/12/2008 */
     if ( strcmp(type_p->name, "sroute") == 0 )
     {
         FILE *fp=0;
@@ -111,7 +111,7 @@ static void fill_options(char *dest, unsigned char *option, struct dhcp_option *
         dest += sprintf(dest, "%d", len); /* only save the length here ... */
         return;
     }
-    /*  added end by EricHuang, 03/12/2008 */
+    /* foxconn added end by EricHuang, 03/12/2008 */
     
 
 	optlen = option_lengths[type];

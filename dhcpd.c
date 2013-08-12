@@ -211,9 +211,11 @@ int main(int argc, char *argv[])
 			break;			
  		case DHCPREQUEST:
         {
+ 		    /* foxcon added start by EricHuang, 03/01/2007 */
  		    unsigned char mac[6];
  		    u_int32_t r_addr;
  		    memcpy(mac, packet.chaddr, 6);
+ 		    /* foxcon added end by EricHuang, 03/01/2007 */
  		    
 			DEBUG(LOG_INFO, "received REQUEST");
 
@@ -222,16 +224,17 @@ int main(int argc, char *argv[])
 			hostname = get_option(&packet, DHCP_HOST_NAME);
 
 			if (requested) memcpy(&requested_align, requested, 4);
-			/*  added start pling 08/03/2011 */
+			/* Foxconn added start pling 08/03/2011 */
 			/* Should clear this var, otherwise it keeps old value
 			 * (from previous packet) and cause reserved IP client
 			 * to get NAK.
 			 */
 			else
 				requested_align = 0;
-			/*  added end pling 08/03/2011 */
+			/* Foxconn added end pling 08/03/2011 */
 			if (server_id) memcpy(&server_id_align, server_id, 4);
 
+            /* foxcon added start by EricHuang, 03/01/2007 */
             r_addr = find_reserved_ip(mac);
             if (r_addr) {
                 if (requested_align)
@@ -244,6 +247,7 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            /* foxcon added end by EricHuang, 03/01/2007 */
 
 			if (lease) { /*ADDME: or static lease */
 				if (server_id) {
@@ -276,11 +280,11 @@ int main(int argc, char *argv[])
 					strncpy(lease->hostname, hostname, bytes);
 					lease->hostname[bytes] = '\0';
                     DEBUG(LOG_INFO,"rewrite leass table, hostname: %s\n", lease->hostname);
-                    /*  wklin removed, 05/07/2007 */
+                    /* foxconn wklin removed, 05/07/2007 */
                     /* write_leases(); */ /*Rewrite lease table into file.*/
 				} else
 					lease->hostname[0] = '\0';
-                /*  wklin added, 05/07/2007 */
+                /* foxconn wklin added, 05/07/2007 */
                 write_leases(); /*Rewrite lease table into file.*/
 			
 			/* what to do if we have no record of the client */

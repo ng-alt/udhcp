@@ -34,7 +34,7 @@ struct dhcp_option options[] = {
 	{"ipttl",	OPTION_U8,				0x17},
 	{"mtu",		OPTION_U16,				0x1a},
 	{"broadcast",	OPTION_IP | OPTION_REQ,			0x1c},
-	{"sroute",	OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x21}, /* static-routes */
+	{"sroute",	OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x21}, /* static-routes, foxconn added by EricHuang, 03/12/2008 */
 	{"ntpsrv",	OPTION_IP | OPTION_LIST,		0x2a},
 	{"wins",	OPTION_IP | OPTION_LIST | OPTION_REQ,	0x2c},
 	{"requestip",	OPTION_IP,				0x32},
@@ -44,8 +44,8 @@ struct dhcp_option options[] = {
 	{"message",	OPTION_STRING,				0x38},
 	{"tftp",	OPTION_STRING,				0x42},
 	{"bootfile",	OPTION_STRING,				0x43},
-	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x79}, /* classless-static-routes */
-	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0xf9},
+	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0x79}, /* classless-static-routes, foxconn added by EricHuang, 12/20/2007 */
+	{"rfc3442", OPTION_STRING  | OPTION_LIST | OPTION_REQ,	0xf9}, /* foxconn added, 03/08/2010, @option249 */
 	{"",		0x00,				0x00}
 };
 
@@ -72,11 +72,19 @@ unsigned char *get_option(struct dhcpMessage *packet, int code)
 	
 	optionptr = packet->options;
 	i = 0;
+	/* foxconn modified start, zacker, 09/18/2009, @big_size_pkt */
 	//length = 308;
+	/* Foxconn modified start pling 05/11/2012 */
+	/* Fix a DHCP server crash issue:
+	 * DHCP server packet was not modified to receive large size packet.
+	 * So we only check options for LEN_OPTIONS long.
+	 */
 	if (packet->op == BOOTREQUEST)
 		length = LEN_OPTIONS;
 	else
 		length = LEN_OPTIONS + LEN_PADDING;
+	/* Foxconn modified end pling 05/11/2012 */
+	/* foxconn modified end, zacker, 09/18/2009, @big_size_pkt */
 	while (!done) {
 		if (i >= length) {
 			LOG(LOG_WARNING, "bogus packet, option fields too long.");
