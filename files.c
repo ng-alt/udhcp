@@ -19,7 +19,7 @@
 #include "leases.h"
 
 /* on these functions, make sure you datatype matches */
-/*  modified start, wenchia, 06/25/2007 */
+/* foxconn modified start, wenchia, 06/25/2007 */
 /* fix alignment issue in DG834GUv5 */
 /* original code*/
 /*
@@ -52,7 +52,7 @@ static int read_ip(char *line, void *arg)
         memcpy((char*)arg, (char*)&addr, sizeof(struct in_addr));
 	return retval;
 }
-/*  modified end, wenchia, 06/25/2007 */
+/* foxconn modified end, wenchia, 06/25/2007 */
 
 
 static int read_str(char *line, void *arg)

@@ -59,9 +59,9 @@ static int signal_pipe[2];
 #define LISTEN_KERNEL 1
 #define LISTEN_RAW 2
 //static int listen_mode;
-static int listen_mode = LISTEN_NONE;
+static int listen_mode = LISTEN_NONE;/* Foxconn modified by Max Ding, 04/12/2008 @dhcp_issue_of_KO */
 
-static int run_on_lan = 0;
+static int run_on_lan = 0;	/* Foxconn added pling 02/24/2011 */
 
 #define DEFAULT_SCRIPT	"/usr/share/udhcpc/default.script"
 
@@ -80,6 +80,7 @@ struct client_config_t client_config = {
 	arp: "\0\0\0\0\0\0",		/* appease gcc-3.0 */
 };
 
+/* Foxconn add start, Max Ding, 04/12/2008 for @dhcp_issue_of_KO */
 #define MAJOR_NUM 100
 #define AG_MAX_ARG_CNT	    32
 #define DEVICE_FILE_NAME "acos_nat_cli"
@@ -121,6 +122,7 @@ static int agApi_setDeviceListenPort(int port_idx, int port_num, int enable)
     
     return ret_val; 
 }
+/* Foxconn add end, Max Ding, 04/12/2008 */
 
 
 #ifndef BB_VER
@@ -156,6 +158,7 @@ static void change_mode(int new_mode)
 		new_mode ? (new_mode == 1 ? "kernel" : "raw") : "none");
 	close(fd);
 	fd = -1;
+	/* Foxconn add start, Max Ding, 04/12/2008 for @dhcp_issue_of_KO */
 	if (new_mode == LISTEN_NONE)
 	{
 	    if (listen_mode != LISTEN_NONE)
@@ -166,6 +169,7 @@ static void change_mode(int new_mode)
 	    if (listen_mode == LISTEN_NONE)
 	        agApi_setDeviceListenPort(DEV_LISTEN_PORT_DHCPC, 68, 1);
 	}
+	/* Foxconn add end, Max Ding, 04/12/2008 */
 	listen_mode = new_mode;
 }
 
@@ -227,8 +231,13 @@ static void perform_release(void)
 /* Exit and cleanup */
 static void exit_client(int retval)
 {
+	/* Foxconn added start pling 02/07/2012 */
+	/* WNDR4000 #TD53: GRC test port 68 is not closed.
+	 * Force disable NAT device list port for port 68, before we termiante */
 	if (listen_mode != LISTEN_NONE)
 		change_mode(LISTEN_NONE);
+	/* Foxconn added end pling 02/07/2012 */
+
 	pidfile_delete(client_config.pidfile);
 	CLOSE_LOG();
 	exit(retval);
@@ -273,9 +282,10 @@ int main(int argc, char *argv[])
 	int retval;
 	struct timeval tv;
 	int c, len;
-	/* 06/11/2010 fix memory overwrite issue */
+	/* Foxconn modify start, Max Ding, 06/11/2010 fix memory overwrite issue */
 	/* struct dhcpMessage packet; */
 	struct udp_dhcp_packet_rcv packet;
+	/* Foxconn modify end, Max Ding, 06/11/2010 */
 	struct in_addr temp_addr;
 	int pid_fd;
 	time_t now;
@@ -284,9 +294,14 @@ int main(int argc, char *argv[])
     unsigned long curr_time;
     struct sysinfo info;
 
-#define DHCPC_TIMEOUT_RESTART_INTERVAL		300
+	/* Foxconn added start pling 08/06/2012 */
+	/* WNDR4500v2 Mantis 2303, per Router Spec,
+	 *  restart DHCP client retry process every 5 minutes.
+	 */
+#define DHCPC_TIMEOUT_RESTART_INTERVAL		10
 	int packet_timeout = 1;
 	int accumulated_timeout = 0;
+	/* Foxconn added end pling 08/06/2012 */
 
 	static struct option arg_options[] = {
 		{"clientid",	required_argument,	0, 'c'},
@@ -308,12 +323,14 @@ int main(int argc, char *argv[])
 	/* get options */
 	while (1) {
 		int option_index = 0;
+		/* Foxconn modified start pling 02/24/2011 */
 		/* Add option '-l' to tell this runs on LAN (LAN auto ip) */
 #if 0
 		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:v", arg_options, &option_index);
 #endif
 		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:vl", 
 				arg_options, &option_index);
+		/* Foxconn modified end pling 02/24/2011 */
 		if (c == -1) break;
 		
 		switch (c) {
@@ -363,11 +380,13 @@ int main(int argc, char *argv[])
 			printf("udhcpcd, version %s\n\n", VERSION);
 			exit_client(0);
 			break;
+		/* Foxconn added start pling 02/24/2011 */
 		/* LAN Auto IP changes */
 		case 'l':
 			run_on_lan = 1;
 			LOG(LOG_INFO, "run on LAN!\n");
 			break;
+		/* Foxconn added end pling 02/24/2011 */
 		default:
 			show_usage();
 		}
@@ -453,7 +472,13 @@ int main(int argc, char *argv[])
 					/* send discover packet */
 					send_discover(xid, requested_ip); /* broadcast */
 
+					/* foxconn James modified start, 11/12/2008 @new_internet_detection */
 #ifdef NEW_WANDETECT
+					/* Foxconn modified start pling 08/06/2012 */
+					/* WNDR4500v2 Mantis 2303.
+					 * Per Router Spec, restart DHCP client retry process every 5 minutes.
+					 * However, AP mode DHCP client is not changed. 
+					 */
 					if (!run_on_lan) {
 						if (packet_num == 0) {
 							packet_timeout = 1;
@@ -465,9 +490,11 @@ int main(int argc, char *argv[])
 					} else {
 						timeout = now + ((packet_num == 2) ? 4 : 3);
 					}
+					/* Foxconn modified end pling 08/06/2012 */
 #else
 					timeout = now + ((packet_num == 2) ? 4 : 2);
 #endif
+					/* foxconn James modified end, 11/12/2008 @new_internet_detection */
 
 					packet_num++;
 				} else {
@@ -479,6 +506,11 @@ int main(int argc, char *argv[])
 						exit_client(1);
 				  	}
 					/* wait to try again */
+					/* Foxconn modified start pling 08/06/2012 */
+					/* WNDR4500v2 Mantis 2303.
+					 * Per Router Spec, restart DHCP client retry process every 5 minutes.
+					 * However, AP mode DHCP client is not changed. 
+					 */
 					if (!run_on_lan) {
 						send_discover(xid, requested_ip); /* broadcast */
 
@@ -493,6 +525,9 @@ int main(int argc, char *argv[])
 						packet_num = 0;
 						timeout = now + 60;
 					}
+					/* Foxconn modified end pling 08/06/2012 */
+
+					/* Foxconn added start pling 02/24/2011 */
 					/* No lease found yet, signal 'autoipd'
 					 * to start Auto IP process */
 					if (run_on_lan) {
@@ -500,8 +535,9 @@ int main(int argc, char *argv[])
 						/* Per Netgear Router Spec 2.0, need to resend
 						 * DHCP Discover every 4 minutes.
 						 */
-						timeout = now + 240;
+						timeout = now + 10;
 					}
+					/* Foxconn added end pling 02/24/2011 */
 				}
 				break;
 			case RENEW_REQUESTED:
@@ -570,11 +606,13 @@ int main(int argc, char *argv[])
 		} else if (retval > 0 && listen_mode != LISTEN_NONE && FD_ISSET(fd, &rfds)) {
 			/* a packet is ready, read it */
 			
+			/* Foxconn modify start, Max Ding, 06/11/2010 */
 			if (listen_mode == LISTEN_KERNEL)
 				/* len = get_packet(&packet, fd); */
 				len = get_packet(&packet.data, fd);
 			/* else len = get_raw_packet(&packet, fd); */
 			else len = get_raw_packet(&packet.data, fd);
+			/* Foxconn modify start, Max Ding, 06/11/2010 */
 			
 			if (len == -1 && errno != EINTR) {
 				DEBUG(LOG_INFO, "error on read, %s, reopening socket", strerror(errno));
@@ -582,6 +620,7 @@ int main(int argc, char *argv[])
 			}
 			if (len < 0) continue;
 			
+			/* Foxconn modify start, Max Ding, 06/11/2010 */
 			/* if (packet.xid != xid) { */
 			if (packet.data.xid != xid) {
 				DEBUG(LOG_INFO, "Ignoring XID %lx (our xid is %lx)",
@@ -595,10 +634,12 @@ int main(int argc, char *argv[])
 				DEBUG(LOG_ERR, "couldnt get option from packet -- ignoring");
 				continue;
 			}
+			/* Foxconn modify end, Max Ding, 06/11/2010 */
 			
 			switch (state) {
 			case INIT_SELECTING:
 				/* Must be a DHCPOFFER to one of our xid's */
+				/* Foxconn modify start, Max Ding, 06/11/2010 */
 				if (*message == DHCPOFFER) {
 					/* if ((temp = get_option(&packet, DHCP_SERVER_ID))) { */
 					if ((temp = get_option(&packet.data, DHCP_SERVER_ID))) {
@@ -615,14 +656,17 @@ int main(int argc, char *argv[])
 						DEBUG(LOG_ERR, "No server ID in message");
 					}
 				}
+				/* Foxconn modify end, Max Ding, 06/11/2010 */
 				break;
 			case RENEW_REQUESTED:
 			case REQUESTING:
 			case RENEWING:
 			case REBINDING:
 				if (*message == DHCPACK) {
+					/* Foxconn modify start, Max Ding, 06/11/2010 */
 					/* if (!(temp = get_option(&packet, DHCP_LEASE_TIME))) { */
 					if (!(temp = get_option(&packet.data, DHCP_LEASE_TIME))) {
+					/* Foxconn modify end, Max Ding, 06/11/2010 */
 						LOG(LOG_ERR, "No lease time with ACK, using 1 hour lease");
 						lease = 60 * 60;
 					} else {
@@ -630,7 +674,10 @@ int main(int argc, char *argv[])
 						lease = ntohl(lease);
 					}
 						
+					/* wklin added start, 08/10/2007 */
 					/* check before entering requesting state */
+					/* Foxconn modify start, Max Ding, 06/11/2010 */
+					/* Foxconn modified start pling 05/27/2010 */
 					u_int32_t addr_to_arp;
 					if (state == REQUESTING)
 						addr_to_arp = 0;
@@ -638,6 +685,7 @@ int main(int argc, char *argv[])
 						addr_to_arp = requested_ip;
 					/* if (arpping(packet.yiaddr, 0, */
 					if (arpping(packet.data.yiaddr, addr_to_arp, 
+					/* Foxconn modified end pling 05/27/2010 */
 								client_config.arp, client_config.interface)==0) {
 						/* send_decline(packet.xid, server_addr, packet.yiaddr); *//* broadcast */
 						send_decline(packet.data.xid, server_addr, packet.data.yiaddr); /* broadcast */
@@ -650,11 +698,14 @@ int main(int argc, char *argv[])
 						sleep(10); /* per the RFC, avoid excessive network traffic */
 						break;
 					}
+					/* Foxconn modify end, Max Ding, 06/11/2010 */
+					/* wklin added end, 08/10/2007 */
 					/* enter bound state */
 					t1 = lease / 2;
 					
 					/* little fixed point for n * .875 */
 					t2 = (lease * 0x7) >> 3;
+					/* Foxconn modify start, Max Ding, 06/11/2010 */
 					/* temp_addr.s_addr = packet.yiaddr; */
 					temp_addr.s_addr = packet.data.yiaddr;
 					LOG(LOG_INFO, "Lease of %s obtained, lease time %ld", 
@@ -663,10 +714,11 @@ int main(int argc, char *argv[])
 					timeout = t1 + start;
 					/* requested_ip = packet.yiaddr; */
 					requested_ip = packet.data.yiaddr;
-					remove("/tmp/udhcpc.routes");
+					remove("/tmp/udhcpc.routes");/*foxconn added, water, 03/08/10, @option249*/
 					/* run_script(&packet, */
 					run_script(&packet.data,
 						   ((state == RENEWING || state == REBINDING) ? "renew" : "bound"));
+					/* Foxconn modify end, Max Ding, 06/11/2010 */
 
 					state = BOUND;
 					change_mode(LISTEN_NONE);
@@ -679,7 +731,7 @@ int main(int argc, char *argv[])
 					/* return to init state */
 					LOG(LOG_INFO, "Received DHCP NAK");
 					/* run_script(&packet, "nak"); */
-					run_script(&packet.data, "nak");
+					run_script(&packet.data, "nak");/* Foxconn modified by Max Ding, 06/11/2010 */
 					if (state != REQUESTING)
 						run_script(NULL, "deconfig");
 					state = INIT_SELECTING;

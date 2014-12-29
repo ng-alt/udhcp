@@ -132,7 +132,7 @@ u_int32_t find_address2(int check_expired, unsigned char *chaddr)
         if ((addr & 0xFF) == 0xFF) continue;
             
             /*to check if this is a reserved ip for this mac or this ip has been reserved for others*/
-            //if ( !check_reserved_ip(addr, chaddr) )  // modified, wenchia, 2007/09/10
+            //if ( !check_reserved_ip(addr, chaddr) )  //foxconn modified, wenchia, 2007/09/10
             if ( !check_reserved_ip(htonl(addr), chaddr) ) 
             {
                 LOG(LOG_INFO, "find_address2: ip 0x%x has beed reserved.\n", addr);

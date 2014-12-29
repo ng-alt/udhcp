@@ -77,17 +77,16 @@ static void init_packet(struct dhcpMessage *packet, char type)
 		char vendor, length;
 		char str[sizeof("udhcp "VERSION)];
 	} vendor_id = { DHCP_VENDOR,  sizeof("udhcp "VERSION) - 1, "udhcp "VERSION};
-
 	
 	init_header(packet, type);
 	memcpy(packet->chaddr, client_config.arp, 6);
 	add_option_string(packet->options, client_config.clientid);
-    /*  wklin modified start, 08/10/2007 */
+    /* foxconn wklin modified start, 08/10/2007 */
     if (type != DHCPDECLINE) {
 	    if (client_config.hostname) add_option_string(packet->options, client_config.hostname);
 	    add_option_string(packet->options, (unsigned char *) &vendor_id);
     }
-    /*  wklin modified end, 08/10/2007 */
+    /* foxconn wklin modified end, 08/10/2007 */
 }
 
 
@@ -181,7 +180,7 @@ int send_release(unsigned long server, unsigned long ciaddr)
 	return kernel_packet(&packet, ciaddr, CLIENT_PORT, server, SERVER_PORT);
 }
 
-/*  wklin added start, 08/07/2007 */
+/* foxconn wklin added start, 08/07/2007 */
 /* Unicasts a DHCP decline message */
 int send_decline(unsigned long xid, unsigned long server, unsigned long ciaddr)
 {
@@ -200,20 +199,20 @@ int send_decline(unsigned long xid, unsigned long server, unsigned long ciaddr)
 	        SERVER_PORT, MAC_BCAST_ADDR, client_config.ifindex);
     return ret;
 }
-/*  wklin added end, 08/07/2007 */
+/* foxconn wklin added end, 08/07/2007 */
 
 /* return -1 on errors that are fatal for the socket, -2 for those that aren't */
 int get_raw_packet(struct dhcpMessage *payload, int fd)
 {
 	int bytes;
-	struct udp_dhcp_packet_rcv packet;/* wklin modified, 10/03/2007*/
+	struct udp_dhcp_packet_rcv packet;/*foxconn wklin modified, 10/03/2007*/
 	u_int32_t source, dest;
 	u_int16_t check;
 	
-	/*  wklin modified start, 10/03/2007 */
+	/* foxconn wklin modified start, 10/03/2007 */
 	memset(&packet, 0, sizeof(struct udp_dhcp_packet_rcv));
 	bytes = read(fd, &packet, sizeof(struct udp_dhcp_packet_rcv));
-	/*  wklin modified end, 10/03/2007 */
+	/* foxconn wklin modified end, 10/03/2007 */
 	if (bytes < 0) {
 		DEBUG(LOG_INFO, "couldn't read on raw listening socket -- ignoring");
 		usleep(500000); /* possible down interface, looping condition */
@@ -233,7 +232,7 @@ int get_raw_packet(struct dhcpMessage *payload, int fd)
 	/* ignore any extra garbage bytes */
 	bytes = ntohs(packet.ip.tot_len);
 	
-	/*  wklin modified start, 10/03/2007 */
+	/* foxconn wklin modified start, 10/03/2007 */
 	/* use udp_dhcp_packet_rcv data structure */
 	/* Make sure its the right packet for us, and that it passes sanity checks */
 	if (packet.ip.protocol != IPPROTO_UDP || packet.ip.version != IPVERSION ||
@@ -243,7 +242,7 @@ int get_raw_packet(struct dhcpMessage *payload, int fd)
 	    	DEBUG(LOG_INFO, "unrelated/bogus packet");
 	    	return -2;
 	}
-	/*  wklin modified end, 10/03/2007 */
+	/* foxconn wklin modified end, 10/03/2007 */
 
 	/* check IP checksum */
 	check = packet.ip.check;

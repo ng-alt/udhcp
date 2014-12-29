@@ -69,6 +69,10 @@ ifeq ($(CONFIG_NEW_WANDETECT),y)
 CFLAGS += -DNEW_WANDETECT
 endif
 
+ifeq ($(IPV6RD_ENABLE_FLAG),y)
+CFLAGS += -DACOS_IPV6RD
+endif
+
 all: $(EXEC1) $(EXEC2) $(EXEC3)
 	$(STRIP) --remove-section=.note --remove-section=.comment $(EXEC1) $(EXEC2) $(EXEC3)
 
@@ -91,6 +95,7 @@ $(EXEC3): $(OBJS3)
 install: all
 
 	$(INSTALL) $(DAEMONS) $(USRSBINDIR)
+#foxconn removed, water, 05/15/2009, dumplease is not necessary
 #	$(INSTALL) $(COMMANDS) $(USRBINDIR)
 ifdef COMBINED_BINARY
 	cd $(USRSBINDIR) && ln -sf $(DAEMONS) $(BOOT_PROGRAMS)

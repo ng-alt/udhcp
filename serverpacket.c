@@ -31,6 +31,7 @@
 #include "options.h"
 #include "leases.h"
 
+/* Foxconn added start pling 06/19/2013 */
 /* For wireless client associated to guest network, we want to assign lease time
  *  of 30 minutes only.
  */
@@ -97,6 +98,7 @@ static int is_guest_network(char *mac)
 	else
 		return 0;
 }
+/* Foxconn added end pling 06/19/2013 */
 
 
 /* send a packet to giaddr using the kernel ip stack */
@@ -219,7 +221,7 @@ int sendOffer(struct dhcpMessage *oldpacket)
          /* Check that this request ip is not on network */
          //!check_ip(ntohl(req_align)) &&
 	 /* the input parameter of check_ip() should be network order */
-	 !check_ip(req_align) && /*  modified by Max Ding, 07/07/2011 @TD #42 of WNR3500Lv2 */
+	 !check_ip(req_align) && /* Foxconn modified by Max Ding, 07/07/2011 @TD #42 of WNR3500Lv2 */
            
 		/* and its not already taken/offered */ /* ADDME: check that its not a static lease */
 		((!(lease = find_lease_by_yiaddr(req_align)) ||
@@ -257,11 +259,13 @@ int sendOffer(struct dhcpMessage *oldpacket)
 	if (lease_time_align < server_config.min_lease) 
 		lease_time_align = server_config.lease;
 
+	/* Foxconn added start pling 06/19/2013 */
 	/* For guest network clients, set lease time to 30 minutes */
 	if (is_guest_network(mac)) {
 		lease_time_align = GUEST_LEASE_TIME;
 		DEBUG(LOG_INFO, "send OFFER to guest network client with lease time %d sec", GUEST_LEASE_TIME);
 	}
+	/* Foxconn added end pling 06/19/2013 */
 
 	/* ADDME: end of short circuit */		
 	add_simple_option(packet.options, DHCP_LEASE_TIME, htonl(lease_time_align));
@@ -298,11 +302,11 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
 	struct option_set *curr;
 	unsigned char *lease_time;
 	
-	// added start Bob Guo 11/15/2006
+	//Foxconn added start Bob Guo 11/15/2006
 	FILE *fp;
 	unsigned char *client_mac, *client_ip;
 	char logBuffer[96];
-	// added end Bob Guo 11/15/2006
+	//Foxconn added end Bob Guo 11/15/2006
 	
 	u_int32_t lease_time_align = server_config.lease;
 	struct in_addr addr;
@@ -319,11 +323,13 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
 			lease_time_align = server_config.lease;
 	}
 
+	/* Foxconn added start pling 06/19/2013 */
 	/* For guest network clients, set lease time to 30 minutes */
 	if (is_guest_network(packet.chaddr)) {
 		lease_time_align = GUEST_LEASE_TIME;
 		DEBUG(LOG_INFO, "send ACK to guest network client with lease time %d sec", GUEST_LEASE_TIME);
 	}
+	/* Foxconn added end pling 06/19/2013 */
 
 	add_simple_option(packet.options, DHCP_LEASE_TIME, htonl(lease_time_align));
 	
@@ -343,7 +349,7 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
 		return -1;
 
 	add_lease(packet.chaddr, packet.yiaddr, lease_time_align);
-	// added start Bob Guo 11/15/2006
+	//Foxconn added start Bob Guo 11/15/2006
 	client_mac = (unsigned char *)packet.chaddr;
 	client_ip = (unsigned char *)&packet.yiaddr;
 	sprintf(logBuffer, "[DHCP IP: (%d.%d.%d.%d)] to MAC address %02X:%02X:%02X:%02X:%02X:%02X,",
@@ -354,7 +360,7 @@ int sendACK(struct dhcpMessage *oldpacket, u_int32_t yiaddr)
         fwrite(logBuffer, sizeof(char), strlen(logBuffer)+1, fp);
         fclose(fp);
   }	
-	// added end Bob Guo 11/15/2006
+	//Foxconn added end Bob Guo 11/15/2006
 
 	return 0;
 }
