@@ -77,16 +77,35 @@ static void init_packet(struct dhcpMessage *packet, char type)
 		char vendor, length;
 		char str[sizeof("udhcp "VERSION)];
 	} vendor_id = { DHCP_VENDOR,  sizeof("udhcp "VERSION) - 1, "udhcp "VERSION};
-	
+
+    /* @option60 */
+#if defined(_XDSL_PRODUCT)
+    extern char option60_venderId[64];
+	unsigned char vendor_id1[66];
+	int len;
+	len=strlen(option60_venderId);
+	if( len!=0 )
+    {
+			vendor_id1[0] = DHCP_VENDOR;
+			vendor_id1[1] = len;
+			strncpy(vendor_id1 + 2, option60_venderId, len);
+	}
+#endif	    
 	init_header(packet, type);
 	memcpy(packet->chaddr, client_config.arp, 6);
 	add_option_string(packet->options, client_config.clientid);
     /* foxconn wklin modified start, 08/10/2007 */
     if (type != DHCPDECLINE) {
 	    if (client_config.hostname) add_option_string(packet->options, client_config.hostname);
-	    add_option_string(packet->options, (unsigned char *) &vendor_id);
+#if defined(_XDSL_PRODUCT)     /* @option60 */
+	    if( len!=0 )
+	    	add_option_string(packet->options, vendor_id1);
+	    else
+#endif
+            add_option_string(packet->options, (unsigned char *) &vendor_id);
     }
     /* foxconn wklin modified end, 08/10/2007 */
+
 }
 
 

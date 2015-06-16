@@ -55,14 +55,21 @@ ifdef SYSLOG
 CFLAGS += -DSYSLOG
 endif
 
+ifeq ($(CONFIG_XDSL_PRODUCT),y)
+CFLAGS += -W -Wall -Wstrict-prototypes -DVERSION='"$(VER)"' -I$(INC_BRCMCFM_PATH) -I$(INC_BRCMDRIVER_PUB_PATH)/$(BRCM_BOARD) -I$(INC_BRCMSHARED_PUB_PATH)/$(BRCM_BOARD)
+CFLAGS += -D_XDSL_PRODUCT
+else
 CFLAGS += -W -Wall -Wstrict-prototypes -DVERSION='"$(VER)"'
+endif
 
 ifdef DEBUG
 CFLAGS += -g -DDEBUG
 STRIP=true
 else
 CFLAGS += -O2 -fomit-frame-pointer
+ifneq ($(CONFIG_XDSL_PRODUCT),y)
 STRIP=$(CROSS_COMPILE)strip
+endif
 endif
 
 ifeq ($(CONFIG_NEW_WANDETECT),y)
@@ -91,7 +98,16 @@ $(EXEC2): $(OBJS2)
 $(EXEC3): $(OBJS3)
 	$(LD) $(LDFLAGS) $(OBJS3) -o $(EXEC3)
 
+ifeq ($(CONFIG_XDSL_PRODUCT),y)
+install: all
+	install -m 755 udhcpd $(INSTALL_DIR)/bin
+	$(STRIP) $(INSTALL_DIR)/bin/udhcpd
+	ln -sf udhcpd $(INSTALL_DIR)/bin/dhcpc
+	ln -sf udhcpd $(INSTALL_DIR)/bin/dhcpd
 
+clean:
+	-rm -f udhcpd udhcpc dhcpc dhcpd dumpleases *.o core
+else
 install: all
 
 	$(INSTALL) $(DAEMONS) $(USRSBINDIR)
@@ -102,18 +118,8 @@ ifdef COMBINED_BINARY
 else
 	$(INSTALL) $(BOOT_PROGRAMS) $(SBINDIR)
 endif
-#	mkdir -p $(USRSHAREDIR)/udhcpc
-#	for name in bound deconfig renew script ; do \
-#		$(INSTALL) samples/sample.$$name \
-#			$(USRSHAREDIR)/udhcpc/default.$$name ; \
-#	done
-#	mkdir -p $(USRSHAREDIR)/man/man1
-#	$(INSTALL) dumpleases.1 $(USRSHAREDIR)/man/man1
-#	mkdir -p $(USRSHAREDIR)/man/man5
-#	$(INSTALL) udhcpd.conf.5 $(USRSHAREDIR)/man/man5
-#	mkdir -p $(USRSHAREDIR)/man/man8
-#	$(INSTALL) udhcpc.8 udhcpd.8 $(USRSHAREDIR)/man/man8
 
 clean:
 	-rm -f udhcpd udhcpc dumpleases *.o core
+endif
 

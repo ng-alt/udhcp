@@ -62,7 +62,9 @@ static int signal_pipe[2];
 static int listen_mode = LISTEN_NONE;/* Foxconn modified by Max Ding, 04/12/2008 @dhcp_issue_of_KO */
 
 static int run_on_lan = 0;	/* Foxconn added pling 02/24/2011 */
-
+#if defined(_XDSL_PRODUCT)
+char option60_venderId[64] = ""; /*@option60 */
+#endif
 #define DEFAULT_SCRIPT	"/usr/share/udhcpc/default.script"
 
 struct client_config_t client_config = {
@@ -325,12 +327,13 @@ int main(int argc, char *argv[])
 		int option_index = 0;
 		/* Foxconn modified start pling 02/24/2011 */
 		/* Add option '-l' to tell this runs on LAN (LAN auto ip) */
-#if 0
-		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:v", arg_options, &option_index);
-#endif
+#if defined(_XDSL_PRODUCT)
+		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:o:vl", arg_options, &option_index);
+#else
 		c = getopt_long(argc, argv, "c:fbH:h:i:np:qr:s:vl", 
 				arg_options, &option_index);
 		/* Foxconn modified end pling 02/24/2011 */
+#endif
 		if (c == -1) break;
 		
 		switch (c) {
@@ -376,6 +379,12 @@ int main(int argc, char *argv[])
 		case 's':
 			client_config.script = optarg;
 			break;
+#if defined(_XDSL_PRODUCT)
+		case 'o':
+			len = strlen(optarg) > 63 ? 63 : strlen(optarg);
+			strncpy(option60_venderId, optarg, len);
+			break;
+#endif
 		case 'v':
 			printf("udhcpcd, version %s\n\n", VERSION);
 			exit_client(0);
