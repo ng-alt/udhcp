@@ -62,6 +62,10 @@ else
 CFLAGS += -W -Wall -Wstrict-prototypes -DVERSION='"$(VER)"'
 endif
 
+ifeq ($(CONFIG_PORTTRUNKING_SUPPORT),y)
+CFLAGS += -DLINK_AGG_IP_MANIPULATION
+endif
+
 ifdef DEBUG
 CFLAGS += -g -DDEBUG
 STRIP=true

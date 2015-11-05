@@ -203,3 +203,147 @@ int check_ip(u_int32_t addr)
 	} else return 0;
 }
 
+/*foxconn Han edited start 09/05/2015*/
+#ifdef LINK_AGG_IP_MANIPULATION
+
+#define HASH_PORT   0x2
+static int aggHashOrder = -1;
+
+#if 0
+/*hash functions move to agghash prevent GPL conflict*/
+u_int32_t _bond_xmit_hash
+    (u_int8_t smac, u_int8_t dmac, u_int16_t pType, u_int32_t sip, u_int32_t dip)
+{
+    u_int32_t hash;
+    hash = smac ^ dmac ^ pType;
+    hash ^= sip ^ dip;
+    hash ^= (hash >> 16);
+    hash ^= (hash >> 8);
+    LOG(LOG_INFO, "%s: 0x%X 0x%X 0x%X 0x%X 0x%X => hash=0x%X\n", __func__, smac, dmac, pType, sip, dip, hash);
+    return hash;
+}
+
+u_int32_t bond_xmit_hash
+    (u_int8_t dmac, u_int32_t dip)
+{
+    u_int32_t   hash;
+    u_int16_t   pType   = ETH_P_IP;
+    u_int32_t   sip     = server_config.server;
+    u_int8_t    smac    = server_config.arp[5];
+
+    hash = _bond_xmit_hash(smac, dmac, pType, sip,dip);
+
+    return (hash % HASH_PORT);
+}
+#endif
+
+u_int32_t bond_xmit_hash
+    (u_int8_t dmac, u_int32_t dip)
+{
+    u_int32_t   hash = 0;
+    char cmd[256];
+	struct in_addr in;
+    FILE * fp = NULL;
+    char buf[8];
+
+    in.s_addr = dip;
+    sprintf(cmd,"agghash %s 00:00:00:00:00:%hhx > /tmp/dhcphash",inet_ntoa(in),dmac);
+    LOG(LOG_INFO, "%s: hash cmd=%s,\n",__func__, cmd);
+    system(cmd);
+
+    fp = fopen("/tmp/dhcphash", "r");
+    if(fp == NULL)
+        return 2;
+
+    if(fgets(buf,8,fp)!=NULL)
+    {
+        if(buf[0] == '1')
+            hash = 1;
+        else if(buf[0] == '0')
+            hash = 0;
+        else if(buf[0] == '2')
+            hash = 2;
+        else 
+            hash = 3;
+    }
+    
+    if(fp)
+        fclose(fp);
+    return hash;
+}
+
+
+/*find and assignable address and check if the client hw address is a reserved address.*/
+u_int32_t find_address_by_hash(int check_expired, unsigned char *chaddr)
+{
+    u_int32_t hash;
+	u_int32_t addr, ret;
+	struct dhcpOfferedAddr *lease = NULL;		
+
+    /* First check for reserved IP for this mac */
+    addr = find_reserved_ip(chaddr);
+    if (addr) 
+    {
+        ret = htonl(addr);
+
+        /* Make sure this IP is not used in network */
+        if (!check_ip(addr)) 
+        {
+            LOG(LOG_INFO, "%s: found reserved ip 0x%x.\n", __func__,ret);
+            ret = htonl(addr);
+            return ret;
+        }
+    }
+
+	addr = ntohl(server_config.start); /* addr is in host order here */
+    
+	for (;addr <= ntohl(server_config.end); addr++) {
+
+        LOG(LOG_INFO, "%s: assign ip 0x%x.\n",__func__, addr);
+        /* ie, 192.168.55.0 */
+        if (!(addr & 0xFF)) continue;
+        
+        /* ie, 192.168.55.255 */
+        if ((addr & 0xFF) == 0xFF) continue;
+
+        /*to check if this is a reserved ip for this mac or this ip has been reserved for others*/
+        if ( !check_reserved_ip(htonl(addr), chaddr) ) 
+        {
+            LOG(LOG_INFO, "%s: ip 0x%x has beed reserved.\n", __func__,addr);
+            continue;
+        }
+        
+        /* lease is not taken */
+        ret = htonl(addr);
+        if ((!(lease = find_lease_by_yiaddr(ret)) ||
+                /* or it expired and we are checking for expired leases */
+                (check_expired  && lease_expired(lease))) &&
+                /* and it isn't on the network */
+                !check_ip(ret)
+            ) 
+        {
+            hash = bond_xmit_hash(chaddr[5], ret);
+            LOG(LOG_INFO, "%s: mac 0x%X ip 0x%x .hash %x %x\n", __func__, chaddr[5], addr, hash, aggHashOrder);
+            /*foxconn Han edited start, 09/11/2015 hash == 2 means reserve to NAS*/
+            if(hash == 2)
+            {
+                LOG(LOG_INFO, "%s: ip 0x%x should prior for NAS.\n", __func__,addr);
+                continue;
+            }
+                //return ret;
+            /*foxconn Han edited end, 09/11/2015*/
+
+            if(hash != 3 && hash == aggHashOrder)
+                continue;
+            else
+                aggHashOrder = hash;
+
+            return ret;
+            break;
+        }
+	}
+	return 0;
+}
+
+#endif /*LINK_AGG_IP_MANIPULATION*/
+/*foxconn Han edited end 09/05/2015*/

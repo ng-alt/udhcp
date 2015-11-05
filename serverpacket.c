@@ -201,9 +201,11 @@ int sendOffer(struct dhcpMessage *oldpacket)
 			lease_time_align = lease->expires - time(0);
 		packet.yiaddr = lease->yiaddr;
 		
+		LOG(LOG_INFO, "%s client is already in lease table assign IP 0x%X\n",__func__,packet.yiaddr);
     /* Find a reserved ip for this MAC */
 	} else if ( (reserved_ip = find_reserved_ip(mac)) != 0) {
 		packet.yiaddr = htonl(reserved_ip);
+		LOG(LOG_INFO, "%s client has reserved IP assign IP 0x%X\n",__func__,packet.yiaddr);
         
 	/* Or the client has a requested ip */
 	} else if ((req = get_option(oldpacket, DHCP_REQUESTED_IP)) &&
@@ -230,12 +232,22 @@ int sendOffer(struct dhcpMessage *oldpacket)
 		lease_expired(lease)))) {
 		    packet.yiaddr = req_align; 
 
+		LOG(LOG_INFO, "%s client has requested IP 0x%X\n",__func__,packet.yiaddr);
 	/* otherwise, find a free IP */ /*ADDME: is it a static lease? */
 	} else {
-		packet.yiaddr = find_address2(0, mac);
+        
+        /*foxconn Han edited start, 09/05/2015*/
+#ifdef LINK_AGG_IP_MANIPULATION
+		packet.yiaddr = find_address_by_hash(0, mac);
+    
+        if(!packet.yiaddr) 
+#endif /*LINK_AGG_IP_MANIPULATION*/
+        /*foxconn Han edited end, 09/05/2015*/
+		    packet.yiaddr = find_address2(0, mac);
 		
 		/* try for an expired lease */
-		if (!packet.yiaddr) packet.yiaddr = find_address2(1, mac);
+		if (!packet.yiaddr) 
+            packet.yiaddr = find_address2(1, mac);
 	}
 	
 	if(!packet.yiaddr) {
