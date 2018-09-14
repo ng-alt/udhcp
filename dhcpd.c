@@ -88,6 +88,12 @@ int main(int argc, char *argv[])
 	unsigned char *state;
 	unsigned char *server_id, *requested, *hostname;
 	u_int32_t server_id_align, requested_align;
+#ifdef ENABLE_DEVICE_DETECT
+	unsigned char mac[6];
+	unsigned char *client_id, *FQDN;
+	u_int32_t client_id_align, client_id_type;
+	unsigned cmd[64];
+#endif
 	unsigned long timeout_end;
 	struct option_set *option;
 	struct dhcpOfferedAddr *lease;
@@ -97,6 +103,11 @@ int main(int argc, char *argv[])
 	
 	OPEN_LOG("udhcpd");
 	LOG(LOG_INFO, "udhcp server (v%s) started", VERSION);
+
+#ifdef ENABLE_DEVICE_DETECT
+	sprintf(cmd,"mkdir /tmp/dhcp_device_release");
+    	system(cmd);
+#endif
 
 	memset(&server_config, 0, sizeof(struct server_config_t));
 	
@@ -222,7 +233,10 @@ int main(int argc, char *argv[])
 			requested = get_option(&packet, DHCP_REQUESTED_IP);
 			server_id = get_option(&packet, DHCP_SERVER_ID);
 			hostname = get_option(&packet, DHCP_HOST_NAME);
-
+#ifdef ENABLE_DEVICE_DETECT
+			client_id = get_option(&packet, DHCP_CLIENT_ID);
+            		FQDN = get_option(&packet, 0x51);
+#endif
 			if (requested) memcpy(&requested_align, requested, 4);
 			/* Foxconn added start pling 08/03/2011 */
 			/* Should clear this var, otherwise it keeps old value
@@ -233,7 +247,13 @@ int main(int argc, char *argv[])
 				requested_align = 0;
 			/* Foxconn added end pling 08/03/2011 */
 			if (server_id) memcpy(&server_id_align, server_id, 4);
-
+#ifdef ENABLE_DEVICE_DETECT
+		if (client_id) 
+            {
+                memcpy(&client_id_type,client_id,1);
+                memcpy(mac, client_id+1, 6);
+            }
+#endif
             /* foxcon added start by EricHuang, 03/01/2007 */
             r_addr = find_reserved_ip(mac);
             if (r_addr) {
@@ -285,6 +305,23 @@ int main(int argc, char *argv[])
 				} else
 					lease->hostname[0] = '\0';
                 /* foxconn wklin added, 05/07/2007 */
+#ifdef ENABLE_DEVICE_DETECT
+		FILE *fp;
+                unsigned char path[64];
+                memcpy(mac, &lease->chaddr[0], 6);
+                sprintf(path,"/tmp/dhcp_device_release/%.2X:%.2X:%.2X:%.2X:%.2X:%.2X",
+                        mac[0], mac[1], mac[2],
+                        mac[3], mac[4], mac[5]);
+                if (!(fp = fopen(path, "w")))
+                {
+                    DEBUG(LOG_WARNING,"cant no open %s",path);
+                }
+                if(fp)
+                {
+		    fwrite(lease->chaddr, 16, 1, fp);
+                    fclose(fp);
+                } 
+#endif
                 write_leases(); /*Rewrite lease table into file.*/
 			
 			/* what to do if we have no record of the client */

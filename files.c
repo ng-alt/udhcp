@@ -11,7 +11,9 @@
 #include <time.h>
 #include <ctype.h>
 #include <netdb.h>
-
+#ifdef ENABLE_DEVICE_DETECT
+#include <signal.h>
+#endif
 #include "debug.h"
 #include "dhcpd.h"
 #include "files.h"
@@ -273,6 +275,9 @@ void write_leases(void)
 		sprintf(buf, "%s %s", server_config.notify_file, server_config.lease_file);
 		system(buf);
 	}
+#ifdef ENABLE_DEVICE_DETECT
+	system("killall -SIGUSR1 device_detect");
+#endif
 }
 
 
